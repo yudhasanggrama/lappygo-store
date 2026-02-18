@@ -59,17 +59,21 @@ export default function ProductBrowse({
   const pathname = usePathname();
   const sp = useSearchParams();
 
+  // --- 1) REFS & STABLE IDS ---
   const isMountedRef = useRef(true);
   const refreshTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const adminAddingTimerRef = useRef<NodeJS.Timeout | null>(null);
   const sessionId = useMemo(() => Math.random().toString(36).slice(2), []);
 
+  // --- 2) STATE ---
   const [mounted, setMounted] = useState(false);
   const [syncing, setSyncing] = useState(false);
   const [isPending, startTransition] = useTransition();
 
+  // ✅ indicator when a new product is inserted (e.g., by admin)
   const [adminAdding, setAdminAdding] = useState(false);
 
+  // ✅ NEW: filtering indicator (for category/sort/search/page changes)
   const [filtering, setFiltering] = useState(false);
   const filteringTimerRef = useRef<NodeJS.Timeout | null>(null);
   const lastNavKeyRef = useRef<string>("");
@@ -85,6 +89,7 @@ export default function ProductBrowse({
   const [loadingId, setLoadingId] = useState<string | null>(null);
   const [addedId, setAddedId] = useState<string | null>(null);
 
+  // --- 3) LIFECYCLE ---
   useEffect(() => {
     isMountedRef.current = true;
     setMounted(true);
@@ -102,16 +107,19 @@ export default function ProductBrowse({
     setLocalCategories(categories);
     setLocalProducts(products);
 
+    // ✅ stop filtering when new server props arrive
     if (isMountedRef.current) setFiltering(false);
     if (filteringTimerRef.current) clearTimeout(filteringTimerRef.current);
   }, [categories, products]);
 
+  // ✅ detect navigation changes (query string changes) -> show filtering loader
   useEffect(() => {
     if (!mounted) return;
 
     const qs = sp.toString();
     const navKey = `${pathname}?${qs}`;
 
+    // first mount: just set baseline, no loader
     if (!lastNavKeyRef.current) {
       lastNavKeyRef.current = navKey;
       return;
@@ -121,6 +129,9 @@ export default function ProductBrowse({
       lastNavKeyRef.current = navKey;
 
       setFiltering(true);
+
+      // safety: if for any reason server props don't arrive (network slow),
+      // keep loader but don't lock forever
       if (filteringTimerRef.current) clearTimeout(filteringTimerRef.current);
       filteringTimerRef.current = setTimeout(() => {
         if (isMountedRef.current) setFiltering(false);
@@ -128,6 +139,7 @@ export default function ProductBrowse({
     }
   }, [mounted, pathname, sp]);
 
+  // --- 4) QUERY HELPERS ---
   const setQuery = useCallback(
     (next: Record<string, string | undefined>) => {
       const qs = new URLSearchParams(sp.toString());
@@ -145,6 +157,8 @@ export default function ProductBrowse({
       ) {
         qs.delete("page");
       }
+
+      // ✅ immediately show loader when user changes filter
       setFiltering(true);
 
       startTransition(() => {
@@ -188,6 +202,7 @@ export default function ProductBrowse({
 
           setSyncing(false);
 
+          // ✅ if the "adminAdding" badge is shown, hide it shortly after refresh ends
           if (adminAddingTimerRef.current) clearTimeout(adminAddingTimerRef.current);
           adminAddingTimerRef.current = setTimeout(() => {
             if (isMountedRef.current) setAdminAdding(false);
@@ -197,6 +212,7 @@ export default function ProductBrowse({
     }, 600);
   }, [router, isPending, syncing, startTransition]);
 
+  // --- 6) REALTIME (hook stays) ---
   useResilientRealtime(
     `prod-${sessionId}`,
     { event: "*", schema: "public", table: "products" },
@@ -219,6 +235,7 @@ export default function ProductBrowse({
     }
   );
 
+  // ✅ Option A: listen specifically for INSERT events and show a lightweight loading badge
   useEffect(() => {
     if (!mounted) return;
 
@@ -245,7 +262,7 @@ export default function ProductBrowse({
     };
   }, [mounted, supabase, sessionId, safeRefresh]);
 
-
+  // --- 7) CART ACTIONS ---
   const doAddToCart = useCallback(
     async (p: Product) => {
       if (p.stock <= 0 || loadingId === p.id) return;
@@ -293,6 +310,7 @@ export default function ProductBrowse({
     [user?.email, openModal, doAddToCart]
   );
 
+  // --- 8) MEMO ---
   const categoryItems = useMemo(
     () => [{ id: "all", name: "All Products", slug: "all" }, ...localCategories],
     [localCategories]
@@ -300,6 +318,7 @@ export default function ProductBrowse({
 
   const activeCategory = selectedCategory || "all";
 
+  // --- 9) UI FALLBACK ---
   if (!mounted) {
     return (
       <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-6">
@@ -316,6 +335,7 @@ export default function ProductBrowse({
     );
   }
 
+  // helper skeleton for filtering
   const FilteringSkeleton = () => (
     <div className="grid gap-3 sm:gap-4 grid-cols-2 md:grid-cols-3 xl:grid-cols-4">
       {Array.from({ length: 8 }).map((_, i) => (
@@ -335,7 +355,7 @@ export default function ProductBrowse({
     </div>
   );
 
-
+  // --- 10) RENDER ---
   return (
     <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-6">
       {/* Header */}
@@ -446,6 +466,7 @@ export default function ProductBrowse({
 
         {/* Products */}
         <section className="relative">
+          {/* ✅ Overlay (optional) */}
           {filtering && (
             <div className="pointer-events-none absolute inset-0 z-10 rounded-2xl bg-background/40 backdrop-blur-[1px]" />
           )}
