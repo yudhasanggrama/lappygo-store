@@ -351,7 +351,6 @@ export default function AdminOrderClient({
                 </span>
               </SelectItem>
 
-              {/* ✅ prevent known 409: paid orders can't be cancelled here */}
               <SelectItem value="cancelled" disabled={pay === "paid"}>
                 <span className="inline-flex items-center gap-2">
                   <XCircle className="h-4 w-4" /> cancelled
@@ -395,20 +394,20 @@ export default function AdminOrderClient({
 
           <div className="flex flex-col sm:flex-row gap-2 sm:items-center sm:justify-between">
             <ApproveCancelDialog
-                orderId={orderId}
-                disabled={approveDisabled}
-                onApproved={(data) => {
-                  if (data?.status) setStatus(String(data.status));
-                  if (data?.payment_status) setPaymentStatus(String(data.payment_status));
+              orderId={orderId}
+              disabled={approveDisabled}
+              onApproved={(data) => {
+                if (data?.status) setStatus(String(data.status));
+                if (data?.payment_status) setPaymentStatus(String(data.payment_status));
 
-                  if (typeof data?.cancel_requested === "boolean")
-                    setCancelRequested(Boolean(data.cancel_requested));
-                  if ("cancel_reason" in (data ?? {}))
-                    setCancelReason((data as any).cancel_reason ?? null);
+                if (typeof data?.cancel_requested === "boolean")
+                  setCancelRequested(Boolean(data.cancel_requested));
+                if ("cancel_reason" in (data ?? {}))
+                  setCancelReason((data as any).cancel_reason ?? null);
 
-                  router.refresh();
-                }}
-              />
+                router.refresh();
+              }}
+            />
 
             <div className="text-xs text-muted-foreground inline-flex items-center gap-2">
               <ShieldCheck className="h-4 w-4" />

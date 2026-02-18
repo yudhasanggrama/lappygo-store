@@ -70,13 +70,13 @@ export default function ProductBrowse({
   const [syncing, setSyncing] = useState(false);
   const [isPending, startTransition] = useTransition();
 
-  // ✅ indicator when a new product is inserted (e.g., by admin)
+  // ✅ realtime insert indicator
   const [adminAdding, setAdminAdding] = useState(false);
 
-  // ✅ NEW: filtering indicator (for category/sort/search/page changes)
+  // ✅ filtering loader (fast)
   const [filtering, setFiltering] = useState(false);
-  const filteringTimerRef = useRef<NodeJS.Timeout | null>(null);
-  const lastNavKeyRef = useRef<string>("");
+  const filterStartRef = useRef<number>(0);
+  const MIN_FILTER_MS = 250;
 
   const supabase = useMemo(() => createSupabaseBrowser(), []);
   const [localCategories, setLocalCategories] = useState<Category[]>(categories);
@@ -98,46 +98,29 @@ export default function ProductBrowse({
       isMountedRef.current = false;
       if (refreshTimeoutRef.current) clearTimeout(refreshTimeoutRef.current);
       if (adminAddingTimerRef.current) clearTimeout(adminAddingTimerRef.current);
-      if (filteringTimerRef.current) clearTimeout(filteringTimerRef.current);
     };
   }, []);
 
-  // keep local state in sync with server props (after router.refresh/navigation)
+  // keep local state in sync with server props (after router.refresh)
   useEffect(() => {
     setLocalCategories(categories);
     setLocalProducts(products);
-
-    // ✅ stop filtering when new server props arrive
-    if (isMountedRef.current) setFiltering(false);
-    if (filteringTimerRef.current) clearTimeout(filteringTimerRef.current);
   }, [categories, products]);
 
-  // ✅ detect navigation changes (query string changes) -> show filtering loader
+  // ✅ stop filtering as soon as the transition is done (fast)
   useEffect(() => {
-    if (!mounted) return;
+    if (isPending) return;
+    if (!filtering) return;
 
-    const qs = sp.toString();
-    const navKey = `${pathname}?${qs}`;
+    const elapsed = Date.now() - filterStartRef.current;
+    const wait = Math.max(0, MIN_FILTER_MS - elapsed);
 
-    // first mount: just set baseline, no loader
-    if (!lastNavKeyRef.current) {
-      lastNavKeyRef.current = navKey;
-      return;
-    }
+    const t = window.setTimeout(() => {
+      if (isMountedRef.current) setFiltering(false);
+    }, wait);
 
-    if (navKey !== lastNavKeyRef.current) {
-      lastNavKeyRef.current = navKey;
-
-      setFiltering(true);
-
-      // safety: if for any reason server props don't arrive (network slow),
-      // keep loader but don't lock forever
-      if (filteringTimerRef.current) clearTimeout(filteringTimerRef.current);
-      filteringTimerRef.current = setTimeout(() => {
-        if (isMountedRef.current) setFiltering(false);
-      }, 10_000);
-    }
-  }, [mounted, pathname, sp]);
+    return () => window.clearTimeout(t);
+  }, [isPending, filtering]);
 
   // --- 4) QUERY HELPERS ---
   const setQuery = useCallback(
@@ -158,7 +141,8 @@ export default function ProductBrowse({
         qs.delete("page");
       }
 
-      // ✅ immediately show loader when user changes filter
+      // ✅ start fast loader
+      filterStartRef.current = Date.now();
       setFiltering(true);
 
       startTransition(() => {
@@ -202,7 +186,7 @@ export default function ProductBrowse({
 
           setSyncing(false);
 
-          // ✅ if the "adminAdding" badge is shown, hide it shortly after refresh ends
+          // hide adminAdding badge shortly after refresh ends
           if (adminAddingTimerRef.current) clearTimeout(adminAddingTimerRef.current);
           adminAddingTimerRef.current = setTimeout(() => {
             if (isMountedRef.current) setAdminAdding(false);
@@ -235,7 +219,7 @@ export default function ProductBrowse({
     }
   );
 
-  // ✅ Option A: listen specifically for INSERT events and show a lightweight loading badge
+  // listen specifically for INSERT events and show a lightweight badge
   useEffect(() => {
     if (!mounted) return;
 
@@ -334,26 +318,6 @@ export default function ProductBrowse({
       </div>
     );
   }
-
-  // helper skeleton for filtering
-  const FilteringSkeleton = () => (
-    <div className="grid gap-3 sm:gap-4 grid-cols-2 md:grid-cols-3 xl:grid-cols-4">
-      {Array.from({ length: 8 }).map((_, i) => (
-        <div
-          key={i}
-          className="h-[260px] rounded-2xl border bg-background p-3"
-        >
-          <div className="aspect-square rounded-xl bg-muted animate-pulse" />
-          <div className="mt-3 h-4 w-3/4 rounded bg-muted animate-pulse" />
-          <div className="mt-2 h-5 w-1/2 rounded bg-muted animate-pulse" />
-          <div className="mt-4 flex gap-2">
-            <div className="h-9 flex-1 rounded-xl bg-muted animate-pulse" />
-            <div className="h-9 flex-1 rounded-xl bg-muted animate-pulse" />
-          </div>
-        </div>
-      ))}
-    </div>
-  );
 
   // --- 10) RENDER ---
   return (
@@ -466,96 +430,101 @@ export default function ProductBrowse({
 
         {/* Products */}
         <section className="relative">
-          {/* ✅ Overlay (optional) */}
+          {/* ✅ overlay loader (fast, no skeleton) */}
           {filtering && (
-            <div className="pointer-events-none absolute inset-0 z-10 rounded-2xl bg-background/40 backdrop-blur-[1px]" />
+            <div className="absolute inset-0 z-10 rounded-2xl bg-background/40 backdrop-blur-[1px] flex items-center justify-center">
+              <div className="flex items-center gap-2 rounded-full border bg-background px-3 py-1.5 text-xs shadow-sm">
+                <div className="h-3.5 w-3.5 animate-spin rounded-full border-2 border-current border-t-transparent" />
+                Loading...
+              </div>
+            </div>
           )}
 
-          {filtering ? (
-            <FilteringSkeleton />
-          ) : localProducts.length === 0 ? (
-            <div className="rounded-3xl border border-dashed p-10 sm:p-16 text-center">
-              <p className="text-muted-foreground">No products found.</p>
-            </div>
-          ) : (
-            <div className="grid gap-3 sm:gap-4 grid-cols-2 md:grid-cols-3 xl:grid-cols-4">
-              {localProducts.map((p, index) => (
-                <div
-                  key={p.id}
-                  className="group relative flex flex-col rounded-2xl border bg-background p-2 sm:p-3 transition-all hover:shadow-md"
-                >
-                  <Link
-                    href={`/product/${p.slug}`}
-                    className="relative aspect-square overflow-hidden rounded-xl bg-muted"
+          <div className={cn(filtering && "opacity-60 pointer-events-none")}>
+            {localProducts.length === 0 ? (
+              <div className="rounded-3xl border border-dashed p-10 sm:p-16 text-center">
+                <p className="text-muted-foreground">No products found.</p>
+              </div>
+            ) : (
+              <div className="grid gap-3 sm:gap-4 grid-cols-2 md:grid-cols-3 xl:grid-cols-4">
+                {localProducts.map((p, index) => (
+                  <div
+                    key={p.id}
+                    className="group relative flex flex-col rounded-2xl border bg-background p-2 sm:p-3 transition-all hover:shadow-md"
                   >
-                    <Image
-                      src={p.image_signed_url || "/placeholder-product.png"}
-                      alt={p.name}
-                      fill
-                      priority={index < 4}
-                      sizes="(max-width: 640px) 50vw, (max-width: 1024px) 33vw, 25vw"
-                      className="object-cover transition-transform group-hover:scale-105"
-                    />
-                    {p.stock <= 0 && (
-                      <div className="absolute inset-0 bg-background/60 flex items-center justify-center">
-                        <Badge variant="destructive">Sold Out</Badge>
+                    <Link
+                      href={`/product/${p.slug}`}
+                      className="relative aspect-square overflow-hidden rounded-xl bg-muted"
+                    >
+                      <Image
+                        src={p.image_signed_url || "/placeholder-product.png"}
+                        alt={p.name}
+                        fill
+                        priority={index < 4}
+                        sizes="(max-width: 640px) 50vw, (max-width: 1024px) 33vw, 25vw"
+                        className="object-cover transition-transform group-hover:scale-105"
+                      />
+                      {p.stock <= 0 && (
+                        <div className="absolute inset-0 bg-background/60 flex items-center justify-center">
+                          <Badge variant="destructive">Sold Out</Badge>
+                        </div>
+                      )}
+                    </Link>
+
+                    <div className="flex flex-1 flex-col pt-2 sm:pt-3">
+                      <h3 className="line-clamp-1 text-sm sm:text-[15px] font-medium">
+                        {p.name}
+                      </h3>
+
+                      <p className="mt-1 text-base sm:text-lg font-bold text-primary">
+                        Rp {formatIDR(p.price)}
+                      </p>
+
+                      <div className="mt-auto pt-3 flex gap-2">
+                        <Button
+                          size="sm"
+                          className={cn(
+                            "flex-1 rounded-xl transition-all duration-300 h-10 sm:h-9",
+                            addedId === p.id
+                              ? "bg-green-600 text-white hover:bg-green-600"
+                              : "bg-primary text-primary-foreground hover:bg-primary/90"
+                          )}
+                          onClick={(e) => handleAddToCart(e, p)}
+                          disabled={loadingId === p.id || p.stock <= 0}
+                        >
+                          {loadingId === p.id ? (
+                            <div className="flex items-center gap-2">
+                              <div className="h-4 w-4 animate-spin rounded-full border-2 border-current border-t-transparent" />
+                              <span>Adding...</span>
+                            </div>
+                          ) : addedId === p.id ? (
+                            <div className="flex items-center gap-2">
+                              <Check className="h-4 w-4" />
+                              <span>Add</span>
+                            </div>
+                          ) : (
+                            <div className="flex items-center gap-2">
+                              <ShoppingCart className="h-4 w-4" />
+                              <span>{p.stock <= 0 ? "Out of stock" : "Add"}</span>
+                            </div>
+                          )}
+                        </Button>
+
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          className="rounded-xl flex-1 h-10 sm:h-9"
+                          asChild
+                        >
+                          <Link href={`/product/${p.slug}`}>Details</Link>
+                        </Button>
                       </div>
-                    )}
-                  </Link>
-
-                  <div className="flex flex-1 flex-col pt-2 sm:pt-3">
-                    <h3 className="line-clamp-1 text-sm sm:text-[15px] font-medium">
-                      {p.name}
-                    </h3>
-
-                    <p className="mt-1 text-base sm:text-lg font-bold text-primary">
-                      Rp {formatIDR(p.price)}
-                    </p>
-
-                    <div className="mt-auto pt-3 flex gap-2">
-                      <Button
-                        size="sm"
-                        className={cn(
-                          "flex-1 rounded-xl transition-all duration-300 h-10 sm:h-9",
-                          addedId === p.id
-                            ? "bg-green-600 text-white hover:bg-green-600"
-                            : "bg-primary text-primary-foreground hover:bg-primary/90"
-                        )}
-                        onClick={(e) => handleAddToCart(e, p)}
-                        disabled={loadingId === p.id || p.stock <= 0}
-                      >
-                        {loadingId === p.id ? (
-                          <div className="flex items-center gap-2">
-                            <div className="h-4 w-4 animate-spin rounded-full border-2 border-current border-t-transparent" />
-                            <span>Adding...</span>
-                          </div>
-                        ) : addedId === p.id ? (
-                          <div className="flex items-center gap-2">
-                            <Check className="h-4 w-4" />
-                            <span>Add</span>
-                          </div>
-                        ) : (
-                          <div className="flex items-center gap-2">
-                            <ShoppingCart className="h-4 w-4" />
-                            <span>{p.stock <= 0 ? "Out of stock" : "Add"}</span>
-                          </div>
-                        )}
-                      </Button>
-
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        className="rounded-xl flex-1 h-10 sm:h-9"
-                        asChild
-                      >
-                        <Link href={`/product/${p.slug}`}>Details</Link>
-                      </Button>
                     </div>
                   </div>
-                </div>
-              ))}
-            </div>
-          )}
+                ))}
+              </div>
+            )}
+          </div>
         </section>
       </div>
     </div>
