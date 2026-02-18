@@ -19,7 +19,7 @@ function getAppUrl() {
 }
 
 function orderUrl(orderId: string) {
-  return `${getAppUrl()}/orders/${orderId}`;
+  return `${getAppUrl()}/orders/${orderId}/confirmation`;
 }
 
 /** ===== Helpers ===== */
