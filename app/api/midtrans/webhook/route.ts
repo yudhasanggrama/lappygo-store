@@ -38,18 +38,25 @@ function extractOrderUuid(providerOrderId: string): string | null {
   const s = (providerOrderId || "").trim();
 
   // order-<uuid>
-  let m = s.match(/^order-([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12})$/);
+  let m = s.match(
+    /^order-([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12})$/
+  );
   if (m?.[1]) return m[1].toLowerCase();
 
   // o-<32hex>-<suffix>
   m = s.match(/^o-([0-9a-fA-F]{32})-/);
   if (m?.[1]) {
     const x = m[1].toLowerCase();
-    return `${x.slice(0, 8)}-${x.slice(8, 12)}-${x.slice(12, 16)}-${x.slice(16, 20)}-${x.slice(20)}`;
+    return `${x.slice(0, 8)}-${x.slice(8, 12)}-${x.slice(12, 16)}-${x.slice(
+      16,
+      20
+    )}-${x.slice(20)}`;
   }
 
   // raw uuid fallback
-  m = s.match(/^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12})$/);
+  m = s.match(
+    /^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12})$/
+  );
   if (m?.[1]) return m[1].toLowerCase();
 
   return null;
@@ -70,7 +77,8 @@ function mapMidtrans(body: any): {
     (tx === "capture" && (!fraud || fraud === "accept")) ||
     tx === "success";
 
-  const isFailed = tx === "deny" || tx === "expire" || tx === "cancel" || tx === "failure";
+  const isFailed =
+    tx === "deny" || tx === "expire" || tx === "cancel" || tx === "failure";
   const isPending = tx === "pending";
 
   return { tx, fraud, isPaid, isFailed, isPending };
@@ -101,8 +109,6 @@ export async function POST(req: Request) {
     const { tx, fraud, isPaid, isFailed } = mapMidtrans(body);
 
     // 2) Update ONLY the payment row that matches this provider_order_id
-    // If you create a payment row before redirecting to Snap,
-    // provider_order_id should be unique per attempt.
     const payUpdate = await service
       .from("payments")
       .update({
@@ -117,20 +123,28 @@ export async function POST(req: Request) {
       .eq("provider_order_id", providerOrderId);
 
     if (payUpdate.error) {
-      console.warn("[midtrans webhook] payments update warning:", payUpdate.error);
+      console.warn(
+        "[midtrans webhook] payments update warning:",
+        payUpdate.error
+      );
       // non-fatal
     }
 
     // 3) Load order + profile (for email)
     const { data: orderRow, error: orderErr } = await service
       .from("orders")
-      .select("id,user_id,total,payment_status,payment_email_sent,failed_email_sent")
+      .select(
+        "id,user_id,total,payment_status,payment_email_sent,failed_email_sent"
+      )
       .eq("id", orderId)
       .maybeSingle();
 
     if (orderErr || !orderRow) {
       // stop retry storm: order not found
-      return NextResponse.json({ ok: true, warning: "order_not_found" }, { status: 200 });
+      return NextResponse.json(
+        { ok: true, warning: "order_not_found" },
+        { status: 200 }
+      );
     }
 
     const { data: profile } = await service
@@ -140,7 +154,6 @@ export async function POST(req: Request) {
       .maybeSingle();
 
     const to = profile?.email ?? null;
-    const appUrl = process.env.NEXT_PUBLIC_SITE_URL || process.env.SITE_URL || "";
 
     // 4) Paid branch -> RPC (single source of truth for stock + paid)
     if (isPaid) {
@@ -156,8 +169,6 @@ export async function POST(req: Request) {
 
       if (rpcErr) {
         console.error("[midtrans webhook] fulfill_order_paid failed:", rpcErr);
-        // Return 200 so Midtrans doesn't spam retries.
-        // But your system should alert/log this.
         return NextResponse.json(
           { ok: true, warning: "paid_but_fulfill_failed", detail: rpcErr.message },
           { status: 200 }
@@ -172,7 +183,6 @@ export async function POST(req: Request) {
           html: paidEmailTemplate({
             orderId,
             total: orderRow.total,
-            appUrl,
           }),
         });
 
@@ -188,7 +198,7 @@ export async function POST(req: Request) {
       return NextResponse.json({ ok: true }, { status: 200 });
     }
 
-    // 5) Non-paid branch -> mark pending/failed, optionally release stock if you reserve earlier
+    // 5) Non-paid branch -> mark pending/failed
     const nextPaymentStatus = isFailed ? "failed" : "unpaid";
     const nextOrderStatus = isFailed ? "cancelled" : "pending";
 
@@ -210,7 +220,6 @@ export async function POST(req: Request) {
         html: failedEmailTemplate({
           orderId,
           reason: `${tx}${fraud ? ` (${fraud})` : ""}`,
-          appUrl,
         }),
       });
 
@@ -226,6 +235,9 @@ export async function POST(req: Request) {
     return NextResponse.json({ ok: true }, { status: 200 });
   } catch (e: any) {
     console.error("[midtrans webhook] error:", e?.message ?? e);
-    return NextResponse.json({ error: e?.message ?? "Server error" }, { status: 500 });
+    return NextResponse.json(
+      { error: e?.message ?? "Server error" },
+      { status: 500 }
+    );
   }
 }
