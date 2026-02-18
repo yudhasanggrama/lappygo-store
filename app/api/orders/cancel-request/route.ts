@@ -80,14 +80,12 @@ export async function POST(req: Request) {
     }
 
     // ✅ send email once
-    const appUrl = process.env.NEXT_PUBLIC_APP_URL!;
     if (!order.cancel_request_email_sent_at && user.email) {
       await sendOrderEmail({
         to: user.email,
         subject: `Permintaan pembatalan diterima — Order ${orderId}`,
         html: cancelRequestEmailTemplate({
           orderId,
-          appUrl,
           reason: reason || null,
         }),
       });

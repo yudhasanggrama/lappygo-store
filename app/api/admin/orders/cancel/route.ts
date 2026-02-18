@@ -92,7 +92,6 @@ export async function POST(req: Request) {
     }
 
     // 2) 🔥 ensure payment badge changes immediately
-    // (your constraint allows 'refunded')
     await service
       .from("orders")
       .update({
@@ -101,7 +100,7 @@ export async function POST(req: Request) {
         updated_at: now,
       })
       .eq("id", orderId)
-      .eq("payment_status", "paid"); // guard: only flip from paid -> refunded
+      .eq("payment_status", "paid");
 
     // 3) refetch order for email + refund amount
     const { data: order, error: orderErr } = await service
@@ -140,7 +139,6 @@ export async function POST(req: Request) {
           reason: note || "Order cancelled (admin approved)",
         });
 
-        // store refund response into payments.payload (no need orders.refund_status column)
         if (pay?.id) {
           await service
             .from("payments")
@@ -173,18 +171,11 @@ export async function POST(req: Request) {
       if (!authErr) {
         const customerEmail = authUserRes?.user?.email ?? "";
         if (customerEmail) {
-          const appUrl =
-            process.env.NEXT_PUBLIC_APP_URL ||
-            process.env.NEXT_PUBLIC_SITE_URL ||
-            process.env.SITE_URL ||
-            "";
-
           await sendOrderEmail({
             to: customerEmail,
             subject: `Order dibatalkan — ${orderId}`,
             html: cancelledEmailTemplate({
               orderId,
-              appUrl,
               note: refundResult
                 ? "Cancellation approved. Refund is being processed."
                 : refundError

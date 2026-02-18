@@ -63,8 +63,7 @@ export async function POST(req: Request) {
       .from("orders")
       .update({
         status: "cancelled",
-        // Kalau kamu memang mau set failed untuk unpaid cancel, keep this.
-        // Lebih "clean": payment_status tetap "unpaid" / "pending".
+        // NOTE: consider keeping payment_status as "unpaid"/"pending" if you have those enums.
         payment_status: "failed",
         cancelled_at: now,
         updated_at: now,
@@ -76,14 +75,12 @@ export async function POST(req: Request) {
     }
 
     // ✅ send email once (idempotent)
-    const appUrl = process.env.NEXT_PUBLIC_APP_URL!;
     if (!order.cancel_approved_email_sent_at && user.email) {
       await sendOrderEmail({
         to: user.email,
         subject: `Order dibatalkan — ${orderId}`,
         html: cancelledEmailTemplate({
           orderId,
-          appUrl,
           note: "Cancelled by customer (unpaid)",
         }),
       });
