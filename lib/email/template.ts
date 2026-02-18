@@ -1,5 +1,27 @@
 // lib/email/templates.ts
 
+/** ===== App URL (single source of truth) ===== */
+function getAppUrl() {
+  // 1) prefer explicit env
+  const direct =
+    process.env.NEXT_PUBLIC_APP_URL ||
+    process.env.APP_URL ||
+    "";
+
+  // 2) vercel env provides "myapp.vercel.app" (no protocol)
+  const vercel = process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : "";
+
+  // 3) last resort (dev only)
+  const raw = direct || vercel || "http://localhost:3000";
+
+  // normalize trailing slash
+  return String(raw).replace(/\/+$/, "");
+}
+
+function orderUrl(orderId: string) {
+  return `${getAppUrl()}/orders/${orderId}`;
+}
+
 /** ===== Helpers ===== */
 function esc(s: string) {
   return String(s)
@@ -28,16 +50,6 @@ function kvRow(label: string, value: string) {
       <td style="padding:10px 0;color:#6b7280;font-size:13px;">${esc(label)}</td>
       <td style="padding:10px 0;color:#111827;font-size:13px;font-weight:700;text-align:right;">${esc(value)}</td>
     </tr>`;
-}
-
-/**
- * Order detail URL (single source of truth).
- * NOTE: change path here if your route differs.
- */
-function orderUrl(appUrl: string, orderId: string) {
-  // normalize trailing slash
-  const base = String(appUrl || "").replace(/\/+$/, "");
-  return `${base}/orders/${orderId}`;
 }
 
 function button(url: string, label: string) {
@@ -149,8 +161,8 @@ function emailShell(opts: {
 
 /** ===== Templates ===== */
 
-export function paidEmailTemplate(args: { orderId: string; total: number; appUrl: string }) {
-  const url = orderUrl(args.appUrl, args.orderId);
+export function paidEmailTemplate(args: { orderId: string; total: number }) {
+  const url = orderUrl(args.orderId);
 
   const bodyHtml = `
     <p style="margin:0 0 12px 0;font-size:14px;line-height:1.7;">
@@ -179,8 +191,8 @@ export function paidEmailTemplate(args: { orderId: string; total: number; appUrl
   });
 }
 
-export function failedEmailTemplate(args: { orderId: string; reason: string; appUrl: string }) {
-  const url = orderUrl(args.appUrl, args.orderId);
+export function failedEmailTemplate(args: { orderId: string; reason: string }) {
+  const url = orderUrl(args.orderId);
 
   const bodyHtml = `
     <p style="margin:0 0 12px 0;font-size:14px;line-height:1.7;">
@@ -209,8 +221,8 @@ export function failedEmailTemplate(args: { orderId: string; reason: string; app
   });
 }
 
-export function shippedEmailTemplate(args: { orderId: string; appUrl: string }) {
-  const url = orderUrl(args.appUrl, args.orderId);
+export function shippedEmailTemplate(args: { orderId: string }) {
+  const url = orderUrl(args.orderId);
 
   const bodyHtml = `
     <p style="margin:0 0 12px 0;font-size:14px;line-height:1.7;">
@@ -242,10 +254,9 @@ export function shippedEmailTemplate(args: { orderId: string; appUrl: string }) 
 
 export function cancelRequestEmailTemplate(args: {
   orderId: string;
-  appUrl: string;
   reason?: string | null;
 }) {
-  const url = orderUrl(args.appUrl, args.orderId);
+  const url = orderUrl(args.orderId);
 
   const bodyHtml = `
     <p style="margin:0 0 12px 0;font-size:14px;line-height:1.7;">
@@ -277,7 +288,6 @@ export function cancelRequestEmailTemplate(args: {
 
 export function cancelledEmailTemplate(args: {
   orderId: string;
-  appUrl: string;
   note?: string | null;
 }) {
   const bodyHtml = `
@@ -304,16 +314,15 @@ export function cancelledEmailTemplate(args: {
     preheader: `Order ${args.orderId} telah dibatalkan.`,
     badgeHtml: pill("CANCELLED", "#FEE2E2", "#991B1B"),
     bodyHtml,
-    cta: null, // ✅ no button (safer)
+    cta: null,
   });
 }
 
 export function cancelRejectedEmailTemplate(args: {
   orderId: string;
-  appUrl: string;
   reason?: string | null;
 }) {
-  const url = orderUrl(args.appUrl, args.orderId);
+  const url = orderUrl(args.orderId);
 
   const bodyHtml = `
     <p style="margin:0 0 12px 0;font-size:14px;line-height:1.7;">
