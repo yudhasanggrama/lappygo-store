@@ -1,6 +1,6 @@
-# 🌸 Bloom E-Commerce — Fullstack Next.js + Supabase + Midtrans
+# LappyGo — Fullstack Next.js + Supabase + Midtrans
 
-Modern fullstack e-commerce platform built with **Next.js 15**, **Supabase**, and **Midtrans**.  
+Modern fullstack e-commerce platform built with **Next.js 16**, **Supabase**, and **Midtrans**.  
 Project ini dikembangkan sebagai **portfolio production-ready** untuk menunjukkan implementasi payment gateway, realtime order system, admin dashboard, dan scalable architecture.
 
 > Fokus: clean architecture, realtime UX, payment integration, dan developer experience.
@@ -9,15 +9,14 @@ Project ini dikembangkan sebagai **portfolio production-ready** untuk menunjukka
 
 ## 🔗 Demo & Repository
 
-- **Live Demo:** _(isi link Vercel)_  
-- **GitHub Repo:** _(repo kamu)_  
-- **Admin Panel:** _(opsional)_
+- **Live Demo:** _(https://lappygo-store.vercel.app/)_  
+- **GitHub Repo:** _(https://github.com/yudhasanggrama/lappygo-store/)_  
 
 ---
 
 ## 🧠 Project Overview
 
-Bloom adalah aplikasi e-commerce fullstack dengan fitur utama:
+LappyGo adalah aplikasi e-commerce fullstack dengan fitur utama:
 
 - Checkout & payment gateway (Midtrans Snap)
 - Realtime order updates (Supabase Realtime)
@@ -221,8 +220,8 @@ Cocok untuk portfolio posisi:
 **Yudha Sanggrama Wijaya**  
 Fullstack Developer
 
-GitHub: _(isi)_  
-LinkedIn: _(isi)_  
+GitHub: _(https://github.com/yudhasanggrama)_  
+LinkedIn: _(https://www.linkedin.com/in/yudhasanggrama/)_  
 Portfolio: _(opsional)_
 
 ---
