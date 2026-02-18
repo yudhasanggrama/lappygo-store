@@ -15,6 +15,15 @@ import {
 } from "@/components/ui/dialog";
 import { ShieldCheck, XCircle } from "lucide-react";
 
+type ApprovedPayload = {
+  id?: string;
+  status?: string;
+  payment_status?: string;
+  cancel_requested?: boolean;
+  cancel_reason?: string | null;
+  [key: string]: any;
+};
+
 export function ApproveCancelDialog({
   orderId,
   disabled = false,
@@ -22,7 +31,7 @@ export function ApproveCancelDialog({
 }: {
   orderId: string;
   disabled?: boolean;
-  onApproved?: () => void;
+  onApproved?: (data?: ApprovedPayload) => void; // ✅ accept payload
 }) {
   const [open, setOpen] = React.useState(false);
   const [note, setNote] = React.useState("");
@@ -37,13 +46,15 @@ export function ApproveCancelDialog({
         body: JSON.stringify({ order_id: orderId, note }),
       });
 
-      const data = await res.json().catch(() => ({}));
-      if (!res.ok) throw new Error(data?.error || `Failed (${res.status})`);
+      const data: ApprovedPayload = await res.json().catch(() => ({} as any));
+      if (!res.ok) throw new Error((data as any)?.error || `Failed (${res.status})`);
 
       toast.success("Cancel approved");
       setOpen(false);
       setNote("");
-      onApproved?.(); // e.g router.refresh()
+
+      // ✅ send updated payload to parent (for instant badge update)
+      onApproved?.(data);
     } catch (e: any) {
       toast.error(e?.message ?? "Approve failed");
       // keep open

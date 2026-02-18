@@ -30,10 +30,21 @@ function kvRow(label: string, value: string) {
     </tr>`;
 }
 
+/**
+ * Order detail URL (single source of truth).
+ * NOTE: change path here if your route differs.
+ */
+function orderUrl(appUrl: string, orderId: string) {
+  // normalize trailing slash
+  const base = String(appUrl || "").replace(/\/+$/, "");
+  return `${base}/orders/${orderId}`;
+}
+
 function button(url: string, label: string) {
+  const safeUrl = esc(url);
   return `
   <!--[if mso]>
-  <v:roundrect xmlns:v="urn:schemas-microsoft-com:vml" href="${url}" style="height:44px;v-text-anchor:middle;width:260px;" arcsize="18%" strokecolor="#111827" fillcolor="#111827">
+  <v:roundrect xmlns:v="urn:schemas-microsoft-com:vml" href="${safeUrl}" style="height:44px;v-text-anchor:middle;width:260px;" arcsize="18%" strokecolor="#111827" fillcolor="#111827">
     <w:anchorlock/>
     <center style="color:#ffffff;font-family:Arial, sans-serif;font-size:14px;font-weight:bold;">
       ${esc(label)}
@@ -41,7 +52,7 @@ function button(url: string, label: string) {
   </v:roundrect>
   <![endif]-->
   <!--[if !mso]><!-- -->
-  <a href="${url}" style="display:inline-block;background:#111827;color:#ffffff;text-decoration:none;
+  <a href="${safeUrl}" style="display:inline-block;background:#111827;color:#ffffff;text-decoration:none;
     padding:12px 18px;border-radius:10px;font-weight:800;font-size:14px;">
     ${esc(label)}
   </a>
@@ -54,11 +65,22 @@ function emailShell(opts: {
   brand: string;
   badgeHtml?: string;
   bodyHtml: string;
-  cta?: { url: string; label: string };
+  cta?: { url: string; label: string } | null;
   footerNote?: string;
 }) {
   const year = new Date().getFullYear();
   const preheader = esc(opts.preheader);
+
+  const ctaHtml =
+    opts.cta && opts.cta.url && opts.cta.label
+      ? `
+        <div style="margin-top:18px;">${button(opts.cta.url, opts.cta.label)}</div>
+        <div style="margin-top:14px;font-size:12px;color:#6b7280;line-height:1.6;">
+          Kalau tombol tidak bisa diklik, copy link ini:<br/>
+          <span style="word-break:break-all;">${esc(opts.cta.url)}</span>
+        </div>
+      `
+      : "";
 
   return `<!doctype html>
 <html>
@@ -101,21 +123,7 @@ function emailShell(opts: {
             <tr>
               <td style="padding:22px 20px;font-family:Arial, sans-serif;color:#111827;">
                 ${opts.bodyHtml}
-
-                ${
-                  opts.cta
-                    ? `<div style="margin-top:18px;">${button(opts.cta.url, opts.cta.label)}</div>`
-                    : ""
-                }
-
-                ${
-                  opts.cta
-                    ? `<div style="margin-top:14px;font-size:12px;color:#6b7280;line-height:1.6;">
-                        Kalau tombol tidak bisa diklik, copy link ini:<br/>
-                        <span style="word-break:break-all;">${opts.cta.url}</span>
-                      </div>`
-                    : ""
-                }
+                ${ctaHtml}
 
                 <div style="margin-top:18px;border-top:1px solid #e5e7eb;padding-top:14px;font-size:12px;color:#6b7280;line-height:1.6;">
                   ${
@@ -139,10 +147,10 @@ function emailShell(opts: {
 </html>`;
 }
 
-/** ===== Templates (existing) ===== */
+/** ===== Templates ===== */
 
 export function paidEmailTemplate(args: { orderId: string; total: number; appUrl: string }) {
-  const url = `${args.appUrl}/orders/${args.orderId}/confirmation`;
+  const url = orderUrl(args.appUrl, args.orderId);
 
   const bodyHtml = `
     <p style="margin:0 0 12px 0;font-size:14px;line-height:1.7;">
@@ -167,12 +175,12 @@ export function paidEmailTemplate(args: { orderId: string; total: number; appUrl
     preheader: `Pembayaran untuk order ${args.orderId} sudah terverifikasi.`,
     badgeHtml: pill("PAID", "#DCFCE7", "#166534"),
     bodyHtml,
-    cta: { url, label: "Lihat status order" },
+    cta: { url, label: "Lihat order" },
   });
 }
 
 export function failedEmailTemplate(args: { orderId: string; reason: string; appUrl: string }) {
-  const url = `${args.appUrl}/orders/${args.orderId}/confirmation`;
+  const url = orderUrl(args.appUrl, args.orderId);
 
   const bodyHtml = `
     <p style="margin:0 0 12px 0;font-size:14px;line-height:1.7;">
@@ -202,11 +210,11 @@ export function failedEmailTemplate(args: { orderId: string; reason: string; app
 }
 
 export function shippedEmailTemplate(args: { orderId: string; appUrl: string }) {
-  const url = `${args.appUrl}/orders/${args.orderId}/confirmation`;
+  const url = orderUrl(args.appUrl, args.orderId);
 
   const bodyHtml = `
     <p style="margin:0 0 12px 0;font-size:14px;line-height:1.7;">
-      Pesanan kamu sudah kami serahkan ke kurir
+      Pesanan kamu sudah kami serahkan ke kurir.
     </p>
 
     <table role="presentation" width="100%" cellpadding="0" cellspacing="0"
@@ -226,18 +234,18 @@ export function shippedEmailTemplate(args: { orderId: string; appUrl: string }) 
     preheader: `Pesanan ${args.orderId} sudah dikirim.`,
     badgeHtml: pill("SHIPPED", "#DBEAFE", "#1D4ED8"),
     bodyHtml,
-    cta: { url, label: "Lihat status" },
+    cta: { url, label: "Track order" },
   });
 }
 
-/** ===== Templates (new) ===== */
+/** ===== Templates (cancel flow) ===== */
 
 export function cancelRequestEmailTemplate(args: {
   orderId: string;
   appUrl: string;
   reason?: string | null;
 }) {
-  const url = `${args.appUrl}/orders/${args.orderId}/confirmation`;
+  const url = orderUrl(args.appUrl, args.orderId);
 
   const bodyHtml = `
     <p style="margin:0 0 12px 0;font-size:14px;line-height:1.7;">
@@ -272,8 +280,6 @@ export function cancelledEmailTemplate(args: {
   appUrl: string;
   note?: string | null;
 }) {
-  const url = `${args.appUrl}/orders/${args.orderId}/confirmation`;
-
   const bodyHtml = `
     <p style="margin:0 0 12px 0;font-size:14px;line-height:1.7;">
       Pesanan kamu telah <b>dibatalkan</b>.
@@ -298,7 +304,7 @@ export function cancelledEmailTemplate(args: {
     preheader: `Order ${args.orderId} telah dibatalkan.`,
     badgeHtml: pill("CANCELLED", "#FEE2E2", "#991B1B"),
     bodyHtml,
-    cta: { url, label: "Buka order" },
+    cta: null, // ✅ no button (safer)
   });
 }
 
@@ -307,7 +313,7 @@ export function cancelRejectedEmailTemplate(args: {
   appUrl: string;
   reason?: string | null;
 }) {
-  const url = `${args.appUrl}/orders/${args.orderId}/confirmation`;
+  const url = orderUrl(args.appUrl, args.orderId);
 
   const bodyHtml = `
     <p style="margin:0 0 12px 0;font-size:14px;line-height:1.7;">

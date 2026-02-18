@@ -1,10 +1,17 @@
 "use client";
 
 import Image from "next/image";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
-import { ArrowLeft, CheckCircle2, Loader2, Truck, XCircle, ShieldCheck } from "lucide-react";
+import {
+  ArrowLeft,
+  CheckCircle2,
+  Loader2,
+  Truck,
+  XCircle,
+  ShieldCheck,
+} from "lucide-react";
 
 import OrderStatusBadge from "@/components/order/OrderStatusBadge";
 import PaymentStatusBadge from "@/components/order/PaymentStatusBadge";
@@ -63,9 +70,10 @@ export default function AdminOrderClient({
 }) {
   const router = useRouter();
 
-  const [status, setStatus] = useState<string>(String(order.status));
+  // ✅ state derived from props but must be kept in sync
+  const [status, setStatus] = useState<string>(String(order.status ?? ""));
   const [paymentStatus, setPaymentStatus] = useState<string>(
-    String(order.payment_status)
+    String(order.payment_status ?? "")
   );
   const [loading, setLoading] = useState(false);
 
@@ -82,6 +90,22 @@ export default function AdminOrderClient({
 
   const st = String(status ?? "").toLowerCase();
   const pay = String(paymentStatus ?? "").toLowerCase();
+
+  // ✅ IMPORTANT:
+  // router.refresh() updates `order` prop, BUT useState won't auto-update.
+  // Sync props -> state so badges change immediately after refresh too.
+  useEffect(() => {
+    setStatus(String(order.status ?? ""));
+    setPaymentStatus(String(order.payment_status ?? ""));
+
+    setCancelRequested(Boolean(order.cancel_requested));
+    setCancelReason(order.cancel_reason ?? null);
+  }, [
+    order.status,
+    order.payment_status,
+    order.cancel_requested,
+    order.cancel_reason,
+  ]);
 
   const rtConfig = useMemo(
     () => ({
@@ -136,14 +160,19 @@ export default function AdminOrderClient({
 
     // ✅ prevent known 409 conflicts (better UX)
     if (next === "cancelled" && curPay === "paid") {
-      toast.error("Paid order can't be cancelled here. Use Approve Cancel & Restock.");
+      toast.error(
+        "Paid order can't be cancelled here. Use Approve Cancel & Restock."
+      );
       return;
     }
     if (next === "shipped" && curPay !== "paid") {
       toast.error("Cannot ship unpaid order.");
       return;
     }
-    if (next === "cancelled" && (curStatus === "shipped" || curStatus === "completed")) {
+    if (
+      next === "cancelled" &&
+      (curStatus === "shipped" || curStatus === "completed")
+    ) {
       toast.error("Cannot cancel after shipped/completed.");
       return;
     }
@@ -366,10 +395,20 @@ export default function AdminOrderClient({
 
           <div className="flex flex-col sm:flex-row gap-2 sm:items-center sm:justify-between">
             <ApproveCancelDialog
-              orderId={orderId}
-              disabled={approveDisabled}
-              onApproved={() => router.refresh()}
-            />
+                orderId={orderId}
+                disabled={approveDisabled}
+                onApproved={(data) => {
+                  if (data?.status) setStatus(String(data.status));
+                  if (data?.payment_status) setPaymentStatus(String(data.payment_status));
+
+                  if (typeof data?.cancel_requested === "boolean")
+                    setCancelRequested(Boolean(data.cancel_requested));
+                  if ("cancel_reason" in (data ?? {}))
+                    setCancelReason((data as any).cancel_reason ?? null);
+
+                  router.refresh();
+                }}
+              />
 
             <div className="text-xs text-muted-foreground inline-flex items-center gap-2">
               <ShieldCheck className="h-4 w-4" />
