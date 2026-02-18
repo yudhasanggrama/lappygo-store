@@ -59,19 +59,20 @@ export default function ProductBrowse({
   const pathname = usePathname();
   const sp = useSearchParams();
 
-  // --- 1) REFS & STABLE IDS ---
   const isMountedRef = useRef(true);
   const refreshTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const adminAddingTimerRef = useRef<NodeJS.Timeout | null>(null);
   const sessionId = useMemo(() => Math.random().toString(36).slice(2), []);
 
-  // --- 2) STATE ---
   const [mounted, setMounted] = useState(false);
   const [syncing, setSyncing] = useState(false);
   const [isPending, startTransition] = useTransition();
 
-  // ✅ indicator when a new product is inserted (e.g., by admin)
   const [adminAdding, setAdminAdding] = useState(false);
+
+  const [filtering, setFiltering] = useState(false);
+  const filteringTimerRef = useRef<NodeJS.Timeout | null>(null);
+  const lastNavKeyRef = useRef<string>("");
 
   const supabase = useMemo(() => createSupabaseBrowser(), []);
   const [localCategories, setLocalCategories] = useState<Category[]>(categories);
@@ -84,7 +85,6 @@ export default function ProductBrowse({
   const [loadingId, setLoadingId] = useState<string | null>(null);
   const [addedId, setAddedId] = useState<string | null>(null);
 
-  // --- 3) LIFECYCLE ---
   useEffect(() => {
     isMountedRef.current = true;
     setMounted(true);
@@ -93,16 +93,41 @@ export default function ProductBrowse({
       isMountedRef.current = false;
       if (refreshTimeoutRef.current) clearTimeout(refreshTimeoutRef.current);
       if (adminAddingTimerRef.current) clearTimeout(adminAddingTimerRef.current);
+      if (filteringTimerRef.current) clearTimeout(filteringTimerRef.current);
     };
   }, []);
 
-  // keep local state in sync with server props (after router.refresh)
+  // keep local state in sync with server props (after router.refresh/navigation)
   useEffect(() => {
     setLocalCategories(categories);
     setLocalProducts(products);
+
+    if (isMountedRef.current) setFiltering(false);
+    if (filteringTimerRef.current) clearTimeout(filteringTimerRef.current);
   }, [categories, products]);
 
-  // --- 4) QUERY HELPERS ---
+  useEffect(() => {
+    if (!mounted) return;
+
+    const qs = sp.toString();
+    const navKey = `${pathname}?${qs}`;
+
+    if (!lastNavKeyRef.current) {
+      lastNavKeyRef.current = navKey;
+      return;
+    }
+
+    if (navKey !== lastNavKeyRef.current) {
+      lastNavKeyRef.current = navKey;
+
+      setFiltering(true);
+      if (filteringTimerRef.current) clearTimeout(filteringTimerRef.current);
+      filteringTimerRef.current = setTimeout(() => {
+        if (isMountedRef.current) setFiltering(false);
+      }, 10_000);
+    }
+  }, [mounted, pathname, sp]);
+
   const setQuery = useCallback(
     (next: Record<string, string | undefined>) => {
       const qs = new URLSearchParams(sp.toString());
@@ -120,10 +145,13 @@ export default function ProductBrowse({
       ) {
         qs.delete("page");
       }
+      setFiltering(true);
 
-      router.push(`${pathname}${qs.toString() ? `?${qs.toString()}` : ""}`);
+      startTransition(() => {
+        router.push(`${pathname}${qs.toString() ? `?${qs.toString()}` : ""}`);
+      });
     },
-    [sp, router, pathname]
+    [sp, router, pathname, startTransition]
   );
 
   // --- 5) DATA HELPERS ---
@@ -160,7 +188,6 @@ export default function ProductBrowse({
 
           setSyncing(false);
 
-          // ✅ if the "adminAdding" badge is shown, hide it shortly after refresh ends
           if (adminAddingTimerRef.current) clearTimeout(adminAddingTimerRef.current);
           adminAddingTimerRef.current = setTimeout(() => {
             if (isMountedRef.current) setAdminAdding(false);
@@ -168,9 +195,8 @@ export default function ProductBrowse({
         }, 1200);
       });
     }, 600);
-  }, [router, isPending, syncing]);
+  }, [router, isPending, syncing, startTransition]);
 
-  // --- 6) REALTIME (hook stays) ---
   useResilientRealtime(
     `prod-${sessionId}`,
     { event: "*", schema: "public", table: "products" },
@@ -193,7 +219,6 @@ export default function ProductBrowse({
     }
   );
 
-  // ✅ Option A: listen specifically for INSERT events and show a lightweight loading badge
   useEffect(() => {
     if (!mounted) return;
 
@@ -205,7 +230,6 @@ export default function ProductBrowse({
         () => {
           setAdminAdding(true);
 
-          // keep the badge visible long enough to be noticed (prevents flicker)
           if (adminAddingTimerRef.current) clearTimeout(adminAddingTimerRef.current);
           adminAddingTimerRef.current = setTimeout(() => {
             if (isMountedRef.current) setAdminAdding(false);
@@ -221,7 +245,7 @@ export default function ProductBrowse({
     };
   }, [mounted, supabase, sessionId, safeRefresh]);
 
-  // --- 7) CART ACTIONS ---
+
   const doAddToCart = useCallback(
     async (p: Product) => {
       if (p.stock <= 0 || loadingId === p.id) return;
@@ -269,7 +293,6 @@ export default function ProductBrowse({
     [user?.email, openModal, doAddToCart]
   );
 
-  // --- 8) MEMO ---
   const categoryItems = useMemo(
     () => [{ id: "all", name: "All Products", slug: "all" }, ...localCategories],
     [localCategories]
@@ -277,7 +300,6 @@ export default function ProductBrowse({
 
   const activeCategory = selectedCategory || "all";
 
-  // --- 9) UI FALLBACK ---
   if (!mounted) {
     return (
       <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-6">
@@ -294,7 +316,26 @@ export default function ProductBrowse({
     );
   }
 
-  // --- 10) RENDER ---
+  const FilteringSkeleton = () => (
+    <div className="grid gap-3 sm:gap-4 grid-cols-2 md:grid-cols-3 xl:grid-cols-4">
+      {Array.from({ length: 8 }).map((_, i) => (
+        <div
+          key={i}
+          className="h-[260px] rounded-2xl border bg-background p-3"
+        >
+          <div className="aspect-square rounded-xl bg-muted animate-pulse" />
+          <div className="mt-3 h-4 w-3/4 rounded bg-muted animate-pulse" />
+          <div className="mt-2 h-5 w-1/2 rounded bg-muted animate-pulse" />
+          <div className="mt-4 flex gap-2">
+            <div className="h-9 flex-1 rounded-xl bg-muted animate-pulse" />
+            <div className="h-9 flex-1 rounded-xl bg-muted animate-pulse" />
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+
+
   return (
     <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-6">
       {/* Header */}
@@ -314,6 +355,15 @@ export default function ProductBrowse({
                 className="animate-pulse text-[10px] py-0 h-5"
               >
                 Syncing...
+              </Badge>
+            )}
+
+            {filtering && (
+              <Badge
+                variant="outline"
+                className="animate-pulse text-[10px] py-0 h-5"
+              >
+                Filtering...
               </Badge>
             )}
 
@@ -395,8 +445,14 @@ export default function ProductBrowse({
         </aside>
 
         {/* Products */}
-        <section>
-          {localProducts.length === 0 ? (
+        <section className="relative">
+          {filtering && (
+            <div className="pointer-events-none absolute inset-0 z-10 rounded-2xl bg-background/40 backdrop-blur-[1px]" />
+          )}
+
+          {filtering ? (
+            <FilteringSkeleton />
+          ) : localProducts.length === 0 ? (
             <div className="rounded-3xl border border-dashed p-10 sm:p-16 text-center">
               <p className="text-muted-foreground">No products found.</p>
             </div>
